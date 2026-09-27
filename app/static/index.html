@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bee Colony: An ABM Classic Use Case</title>
+<script src="/static/vendor/plotly.min.js"></script>
+<script src="/static/vendor/pixi.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#171e2e; --panel2:#1d2740; --ink:#e8edf7;
+    --muted:#93a1bf; --accent:#ffcf4d; --line:#28324d; --good:#5ad18a;
+    --bad:#ff6b6b; --warn:#ffa94d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',system-ui,-apple-system,Roboto,sans-serif;
+       background:var(--bg);color:var(--ink);font-size:14px}
+  header{display:flex;align-items:center;gap:14px;padding:12px 18px;
+         background:linear-gradient(180deg,#141b2b,#0f1420);border-bottom:1px solid var(--line)}
+  header h1{font-size:18px;margin:0;letter-spacing:.4px}
+  header .sub{color:var(--muted);font-size:12px}
+  .stat{margin-left:auto;display:flex;gap:18px;flex-wrap:wrap}
+  .stat .s{display:flex;flex-direction:column;align-items:flex-end}
+  .stat .s b{font-size:16px}
+  .stat .s span{font-size:11px;color:var(--muted)}
+  #alarmbar{height:4px;width:100%;background:#2a1620}
+  #alarmbar i{display:block;height:100%;width:0%;background:var(--bad);transition:width .3s}
+  main{display:grid;grid-template-columns:minmax(0,7fr) minmax(300px,5fr);gap:14px;
+       padding:14px;align-items:start}
+  @media (max-width:1100px){main{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+        padding:14px;margin-bottom:14px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
+           margin:0 0 10px}
+  #simwrap{position:relative;background:#0b0f18;border-radius:10px;overflow:hidden}
+  canvas{display:block;width:100%;height:auto;image-rendering:pixelated}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:12px;color:var(--muted)}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+  .ctrl{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;
+        margin-bottom:10px}
+  .ctrl label{font-size:13px}
+  .ctrl .val{font-variant-numeric:tabular-nums;color:var(--accent);font-size:13px;text-align:right}
+  input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--accent);height:22px}
+  .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+         border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:#221c07;border-color:var(--accent);font-weight:600}
+  button.danger{border-color:#5a2a2a;background:#2a1414}
+  #rules{max-height:420px;overflow:auto}
+  .rule{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;
+        background:var(--panel2);opacity:.55;transition:opacity .2s}
+  .rule.hot{opacity:1;border-color:var(--accent);box-shadow:0 0 8px rgba(255,207,77,.15)}
+  .rule .rt{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+  .rule .rn{font-weight:700;color:var(--accent)}
+  .rule .cnt{font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted)}
+  .rule .ct{font-size:12px;color:var(--muted);line-height:1.45;margin-top:4px}
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:0 14px 16px}
+  @media (max-width:900px){.charts{grid-template-columns:1fr}}
+  .chart{height:280px}
+  footer{padding:10px 18px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
+  .chk{display:flex;align-items:center;gap:8px;font-size:13px;margin-top:2px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🐝 Bee Colony: An ABM Classic Use Case</h1>
+  <div class="sub">agent-based model · mesa · emergent colony behavior</div>
+  <div class="stat">
+    <div class="s"><b id="st-step">0</b><span>day</span></div>
+    <div class="s"><b id="st-temp">–</b><span>temp °C</span></div>
+    <div class="s"><b id="st-honey">–</b><span>honey</span></div>
+    <div class="s"><b id="st-pop">–</b><span>bees</span></div>
+    <div class="s"><b id="st-larvae">–</b><span>larvae</span></div>
+    <div class="s"><b id="st-rescues">–</b><span>rescues</span></div>
+    <div class="s"><b id="st-waspkills">–</b><span>wasp kills</span></div>
+  </div>
+</header>
+<div id="alarmbar"><i id="alarmfill"></i></div>
+
+<main>
+  <!-- LEFT: simulation -->
+  <div>
+    <div class="card">
+      <h2>Colony</h2>
+      <div id="simwrap"><canvas id="sim" width="800" height="800"></canvas></div>
+      <div class="legend">
+        <span><i style="background:#ffcf4d"></i>forager</span>
+        <span><i style="background:#ffb057"></i>returning</span>
+        <span><i style="background:#ff8787"></i>injured</span>
+        <span><i style="background:#5ad18a"></i>nurse</span>
+        <span><i style="background:#7aa2ff"></i>rescuing</span>
+        <span><i style="background:#c084fc"></i>defending</span>
+        <span><i style="background:#94a3b8"></i>hibernating</span>
+        <span><i style="background:#2dd4bf"></i>flower</span>
+        <span><i style="background:#a3e635"></i>nest/queen</span>
+        <span><i style="background:#ef4444"></i>wasp</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Charts</h2>
+      <div class="charts" style="padding:0">
+        <div class="chart" id="chart-pop"></div>
+        <div class="chart" id="chart-honey"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: controls + rules -->
+  <div>
+    <div class="card">
+      <h2>Controls</h2>
+      <div class="btnrow">
+        <button id="btn-run" class="primary">⏸ Pause</button>
+        <button id="btn-step">Step +1</button>
+        <button id="btn-reset">Reset</button>
+        <button id="btn-wasp" class="danger">Release wasp</button>
+        <button id="btn-injure" class="danger">Injure a bee</button>
+      </div>
+
+      <div class="ctrl"><label>Simulation speed</label><span class="val" id="v-speed">2×</span>
+        <input type="range" id="c-speed" min="1" max="8" value="2"></div>
+      <div class="ctrl"><label>Number of bees</label><span class="val" id="v-nbees">50</span>
+        <input type="range" id="c-nbees" min="10" max="200" step="5" value="50"></div>
+      <div class="ctrl"><label>Environment temperature (°C)</label><span class="val" id="v-temp">24</span>
+        <input type="range" id="c-temp" min="-10" max="45" step="1" value="24"></div>
+      <div class="ctrl"><label>Wasp threats</label><span class="val" id="v-wasp">0</span>
+        <input type="range" id="c-wasp" min="0" max="12" value="0"></div>
+      <div class="ctrl"><label>Nectar regrowth rate</label><span class="val" id="v-nreg">0.04</span>
+        <input type="range" id="c-nreg" min="0" max="0.20" step="0.01" value="0.04"></div>
+      <div class="ctrl"><label>Bee sensing radius</label><span class="val" id="v-sense">6</span>
+        <input type="range" id="c-sense" min="2" max="15" value="6"></div>
+      <div class="ctrl"><label>Colony max size</label><span class="val" id="v-maxbees">150</span>
+        <input type="range" id="c-maxbees" min="20" max="300" step="10" value="150"></div>
+      <div class="ctrl"><label>Larvae maturation (days)</label><span class="val" id="v-larvae">2</span>
+        <input type="range" id="c-larvae" min="1" max="7" value="2"></div>
+      <label class="chk"><input type="checkbox" id="c-daynight"> Auto day/night temperature cycle</label>
+    </div>
+
+    <div class="card">
+      <h2>Bee rules <span style="text-transform:none;color:var(--muted);font-weight:400">(live fire counter)</span></h2>
+      <div id="rules"></div>
+    </div>
+  </div>
+</main>
+
+<footer id="footer">Loading…</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

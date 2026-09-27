@@ -1,0 +1,5 @@
+mesa>=2.1.5,<3
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2
+httpx>=0.27
